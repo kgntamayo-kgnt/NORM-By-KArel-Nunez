@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NORM Oil & Gas Hub — Vigilancia y Protección Radiológica</title>
+  <meta name="description" content="Herramienta interactiva de vigilancia radiológica, protección radiológica y gestión NORM para el sector Oil & Gas (MME / OIEA GSR Part 3 / SSG-60 / IOGP 412)." />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Fuente Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- React & ReactDOM (UMD Producción) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone para compilar JSX en el navegador -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    input[type="range"] {
+      height: 6px;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased selection:bg-amber-200 selection:text-slate-900">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect, useRef } = React;
+
+    // ============================================================================
+    // COMPONENTE ENVOLTORIO PARA ICONOS LUCIDE EN ENTORNO HTML ÚNICO
+    // ============================================================================
+    const LucideIcon = ({ name, className = "w-4 h-4" }) => {
+      const spanRef = useRef(null);
+      useEffect(() => {
+        if (spanRef.current && window.lucide) {
+          spanRef.current.innerHTML = '';
+          const iconEl = document.createElement('i');
+          iconEl.setAttribute('data-lucide', name);
+          iconEl.className = className;
+          spanRef.current.appendChild(iconEl);
+          window.lucide.createIcons({ root: spanRef.current });
+        }
+      }, [name, className]);
+      return <span ref={spanRef} className="inline-flex items-center justify-center shrink-0" />;
+    };
+
+    // ============================================================================
+    // BASE DE DATOS TÉCNICA Y REGULATORIA (MME + OIEA GSR Part 3 / SSG-60 / IOGP 412)
+    // ============================================================================
+
+    const RADIONUCLIDES_DB = [
+      {
+        symbol: '²³⁸U',
+        name: 'Uranio-238',
+        chain: 'Serie del Uranio',
+        halfLife: '4.47 × 10⁹ años',
+        decay: 'Alfa (α)',
+        exemption: '1 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Roca reservorio (lutitas/lodolitas), cortes de perforación por arrastre mecánico.'
+      },
+      {
+        symbol: '²³²Th',
+        name: 'Torio-232',
+        chain: 'Serie del Torio',
+        halfLife: '1.40 × 10¹⁰ años',
+        decay: 'Alfa (α)',
+        exemption: '1 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Formaciones geológicas detríticas y lutitas; cortes de perforación.'
+      },
+      {
+        symbol: '⁴⁰K',
+        name: 'Potasio-40',
+        chain: 'Primigenio (No cadena)',
+        halfLife: '1.24 × 10⁹ años',
+        decay: 'Beta-Gamma (β, γ)',
+        exemption: '10 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Arcillas, lutitas, lodos base agua con KCl y aporte significativo al fondo natural.'
+      },
+      {
+        symbol: '²²⁶Ra',
+        name: 'Radio-226',
+        chain: 'Serie del ²³⁸U',
+        halfLife: '1,600 años',
+        decay: 'Alfa (α) + progenie γ',
+        exemption: '1 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Incrustaciones (radiobarita Ba(Ra)SO₄), aguas de producción y lodos de tanques.'
+      },
+      {
+        symbol: '²²⁸Ra',
+        name: 'Radio-228',
+        chain: 'Serie del ²³²Th',
+        halfLife: '5.75 años',
+        decay: 'Beta (β) + progenie γ',
+        exemption: '1 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Incrustaciones en tuberías, cabezales de pozo, bombas y separadores.'
+      },
+      {
+        symbol: '²²²Rn',
+        name: 'Radón-222',
+        chain: 'Serie del ²³⁸U (Hijo ²²⁶Ra)',
+        halfLife: '3.82 días',
+        decay: 'Alfa (α)',
+        exemption: 'Ref: 1,000 Bq/m³ (Res. 181434)',
+        appearance: 'Corrientes de gas natural, plantas de procesamiento, tanques cerrados sin ventilación.'
+      },
+      {
+        symbol: '²¹⁰Pb',
+        name: 'Plomo-210',
+        chain: 'Serie del ²³⁸U (Hijo ²²²Rn)',
+        halfLife: '22.2 años',
+        decay: 'Beta (β) / Gamma débil',
+        exemption: '1 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Películas delgadas en líneas de gas, unidades de licuefacción, bombas de propano/etano.'
+      },
+      {
+        symbol: '²¹⁰Po',
+        name: 'Polonio-210',
+        chain: 'Serie del ²³⁸U (Hijo ²¹⁰Pb)',
+        halfLife: '138.4 días',
+        decay: 'Alfa puro (α)',
+        exemption: '1 Bq/g (OIEA GSR Part 3)',
+        appearance: 'Películas internas en equipos de tratamiento de gas y lodos.'
+      }
+    ];
+
+    const FACILITY_NODES = [
+      {
+        id: 'wellhead',
+        title: '1. Boca de Pozo y Árbol de Navidad',
+        stage: 'Upstream - Extracción',
+        icon: 'flame',
+        matrix: 'Sólida (Incrustación) / Fluido multifásico',
+        form: 'Incrustaciones de Radiobarita y Carbonatos',
+        radionuclides: ['²²⁶Ra', '²²⁸Ra', '²²⁴Ra', '²²²Rn'],
+        activityRange: '0.1 – 15,000 Bq/g en incrustaciones',
+        exposurePath: 'Irradiación externa gamma (cercanía a válvulas y chokes).',
+        monitoring: 'Intensímetro intrínsecamente seguro a 30 cm de superficie; inspección previa a intervención de subsuelo.',
+        controls: 'Control de tiempos de permanencia, inhibidores de incrustación (scale inhibitors), señalización si supera nivel de intervención.'
+      },
+      {
+        id: 'separators',
+        title: '2. Separadores Trifásicos y Tratadores',
+        stage: 'Upstream - Facilidades',
+        icon: 'layers',
+        matrix: 'Líquida / Lodos / Incrustaciones',
+        form: 'Lodos de fondo, arenas y precipitación de sales',
+        radionuclides: ['²²⁶Ra', '²²⁸Ra', '²¹⁰Pb', '²¹⁰Po'],
+        activityRange: 'Hasta 1,300 Bq/g en lodos; >10,000 Bq/g en escamas',
+        exposurePath: 'Irradiación externa en operación; exposición interna (inhalación/contacto) en apertura y limpieza.',
+        monitoring: 'Perfilaje gamma externo antes de parada de planta; monitor de contaminación superficial (Bq/cm²) al abrir.',
+        controls: 'Ventilación forzada previa al ingreso, EPP respiratorio HEPA, trajes Tyvek y contención húmeda de lodos.'
+      },
+      {
+        id: 'tanks',
+        title: '3. Tanques y Agua de Producción',
+        stage: 'Upstream / Midstream',
+        icon: 'droplets',
+        matrix: 'Líquida (Salmueras) / Gaseosa (Espacio cabeza)',
+        form: 'Agua de formación disuelta y acumulación de gas Radón',
+        radionuclides: ['²²⁶Ra', '²²⁸Ra', '²²⁴Ra', '²²²Rn'],
+        activityRange: '0.1 – 100 Bq/L (agua); hasta 200,000 Bq/m³ (²²²Rn)',
+        exposurePath: 'Inhalación de ²²²Rn en espacios confinados o techos fijos; irradiación gamma por sedimentos en fondo.',
+        monitoring: 'Medidor continuo o pasivo de Radón en espacios cerrados; espectrometría gamma en laboratorio para agua.',
+        controls: 'Ventilación natural/mecánica antes de aforo manual; prohibición de comer, beber o fumar en área de tanques.'
+      },
+      {
+        id: 'gaslines',
+        title: '4. Líneas de Gas y Fraccionamiento',
+        stage: 'Midstream / Downstream',
+        icon: 'wind',
+        matrix: 'Gaseosa / Superficial (Películas finas)',
+        form: 'Películas invisibles de decaimiento de Radón (²¹⁰Pb / ²¹⁰Po)',
+        radionuclides: ['²²²Rn', '²¹⁰Pb', '²¹⁰Bi', '²¹⁰Po'],
+        activityRange: '0.1 – 100 Bq/cm² en paredes internas',
+        exposurePath: 'Exposición interna crítica (emisores alfa/beta) al cortar, esmerilar o limpiar tuberías y bombas de GLP.',
+        monitoring: 'Detector de contaminación superficial Alfa/Beta (sonda de centelleo o proporcional) y frotis (smear test).',
+        controls: 'Prohibido corte en caliente o pulido en seco sin extracción HEPA; uso de mascarilla P100/HEPA y doble guante de nitrilo.'
+      },
+      {
+        id: 'pits',
+        title: '5. Piscinas de Lodos y Patios de Tubería',
+        stage: 'Perforación / Clausura',
+        icon: 'factory',
+        matrix: 'Sólida (Suelos, sedimentos, chatarra tubular)',
+        form: 'Ripios de lutitas, lodos deshidratados y tubería almacenada',
+        radionuclides: ['²³⁸U', '²³²Th', '⁴⁰K', '²²⁶Ra', '²¹⁰Pb'],
+        activityRange: 'Variable según formación (Lutitas: 0.05–0.1 Bq/g; tubería con escala: >1 Bq/g)',
+        exposurePath: 'Dispersión ambiental por escorrentía/polvo; liberación no controlada de chatarra contaminada.',
+        monitoring: 'Barrido radiométrico en grilla (intensímetro a 1 m y 30 cm); muestreo compuesto de suelo/sedimento (SGC).',
+        controls: 'Tapones herméticos en tubería contaminada almacenada, impermeabilización, control de riesgos fisicoquímicos (metales pesados/hidrocarburos).'
+      }
+    ];
+
+    const GLOSSARY_TERMS = [
+      { term: 'NORM', def: 'Materiales Radiactivos de Origen Natural (Naturally Occurring Radioactive Material). Materiales presentes en la naturaleza cuyos radionucleidos (²³⁸U, ²³²Th, ⁴⁰K) pueden concentrarse por procesos industriales como la extracción de petróleo y gas.' },
+      { term: 'Fondo Natural (Natural Background)', def: 'Dosis, tasas de dosis o concentraciones de actividad asociadas a fuentes naturales existentes en el ambiente (cósmica y terrestre) que no son susceptibles de control. En Colombia oscila típicamente entre 0.05 y 0.20 µSv/h.' },
+      { term: 'Principio ALARA', def: 'Acrónimo de "As Low As Reasonably Achievable" (Tan bajo como sea razonablemente alcanzable). Exige optimizar la protección radiológica considerando factores económicos y sociales.' },
+      { term: 'Enfoque Graduado (Graded Approach)', def: 'Principio del OIEA (GSR Part 3 / SSG-60) según el cual el rigor del control regulatorio y de vigilancia debe ser proporcional a la magnitud y probabilidad de las exposiciones radiológicas.' },
+      { term: 'Radiobarita', def: 'Sulfato de bario y radio [Ba(Ra)SO₄] que precipita formando incrustaciones extremadamente duras en el interior de tuberías y equipos al caer la presión y temperatura del agua de formación.' },
+      { term: 'Nivel de Dispensa / Exención', def: 'Valores establecidos por el OIEA (GSR Part 3) por debajo de los cuales un material con radionucleidos naturales no requiere control regulatorio radiológico: 1 Bq/g para radionucleidos de las cadenas de U/Th y 10 Bq/g para ⁴⁰K.' },
+      { term: 'Tasa de Dosis Efectiva', def: 'Magnitud física que mide la intensidad del campo de radiación recibida por unidad de tiempo. Se expresa en microsieverts por hora (µSv/h) o milisieverts por hora (mSv/h).' }
+    ];
+
+    const RADIATION_SHIELDING = [
+      {
+        type: 'Alfa (α)',
+        symbol: 'α',
+        nature: 'Núcleos de Helio (2 protones, 2 neutrones). Alta energía, muy baja penetración.',
+        range: '~2 cm en aire; < 0.001 cm en tejido humano (detenida por piel intacta o papel).',
+        hazard: 'Exposición INTERNA (inhalación, ingestión o heridas). Muy alto daño biológico interno.',
+        shielding: 'No requiere blindaje estructural. El control es contención, ventilación y EPP respiratorio/dérmico.'
+      },
+      {
+        type: 'Beta (β)',
+        symbol: 'β',
+        nature: 'Electrones o positrones emitidos desde el núcleo.',
+        range: 'Varios metros en aire; 1 a 2 cm en tejido vivo (riesgo para piel y cristalino).',
+        hazard: 'Irradiación externa superficial y exposición interna.',
+        shielding: 'Materiales de bajo número atómico (Z) y baja densidad: acrílico, plásticos, madera o aluminio delgado.'
+      },
+      {
+        type: 'Gamma (γ)',
+        symbol: 'γ',
+        nature: 'Fotones electromagnéticos de alta energía (similar a rayos X).',
+        range: 'Decenas de metros en aire; atraviesa el cuerpo humano y paredes metálicas.',
+        hazard: 'Irradiación EXTERNA de cuerpo entero (principal preocupación en tanques y tuberías con incrustaciones).',
+        shielding: 'Materiales de alto número atómico (Z) y alta densidad: plomo, acero grueso o concreto de alta densidad.'
+      }
+    ];
+
+    // ============================================================================
+    // COMPONENTE PRINCIPAL DE LA APLICACIÓN
+    // ============================================================================
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [glossaryOpen, setGlossaryOpen] = useState(false);
+      const [glossarySearch, setGlossarySearch] = useState('');
+      const [toastMessage, setToastMessage] = useState(null);
+
+      // Calculadora de Niveles de Referencia
+      const [backgroundReadings, setBackgroundReadings] = useState([0.11, 0.12, 0.10, 0.11]);
+      const [pointReading, setPointReading] = useState(0.45);
+      const [exposureHours, setExposureHours] = useState(200);
+      const [radonLevel, setRadonLevel] = useState(180);
+
+      // Mapa de Procesos NORM
+      const [selectedNodeId, setSelectedNodeId] = useState('wellhead');
+
+      // Árboles de Decisión Operativos
+      const [treeMode, setTreeMode] = useState('equipment');
+      const [equipStep, setEquipStep] = useState('start');
+      const [remStep, setRemStep] = useState('start');
+
+      // Selector de Instrumentación y EPP
+      const [selectedScenario, setSelectedScenario] = useState('routine_gamma');
+
+      // Registros Digitales de Campo (Anexos 1, 2 y 3)
+      const [activeForm, setActiveForm] = useState('anexo1');
+      const [anexo1Rows, setAnexo1Rows] = useState([
+        { id: 1, point: 'Perímetro Norte - Zona Libre', m1: 0.11, m2: 0.12, m3: 0.10, m4: 0.11, obs: 'Sin presencia de equipos ni lodos' },
+        { id: 2, point: 'Acceso Vía Principal - Punto Control', m1: 0.13, m2: 0.12, m3: 0.14, m4: 0.13, obs: 'Suelo natural arcilloso' }
+      ]);
+      const [anexo2Rows, setAnexo2Rows] = useState([
+        { id: 1, code: 'PI-01', desc: 'Cabezal de Pozo Productor', measured: 0.18, obs: 'Operación normal' },
+        { id: 2, code: 'PI-02', desc: 'Separador Trifásico V-101 (Fondo)', measured: 0.65, obs: 'Posible acumulación de lodos' },
+        { id: 3, code: 'PI-03', desc: 'Patio de Tubería Recuperada (Rack 4)', measured: 3.40, obs: 'Incrustación detectada en junta' },
+        { id: 4, code: 'PI-04', desc: 'Piscina de Agua de Producción', measured: 0.15, obs: 'Nivel basal' }
+      ]);
+      const [anexo3Rows, setAnexo3Rows] = useState([
+        { id: 1, worker: 'Ing. Carlos Méndez (OPR)', activity: 'Inspección radiométrica patio tuberías', hours: 3.5, dose: 4.2 },
+        { id: 2, worker: 'Téc. Ana Gómez (Mantenimiento)', activity: 'Apertura y limpieza separador V-101', hours: 6.0, dose: 11.5 }
+      ]);
+
+      const showToast = (msg) => {
+        setToastMessage(msg);
+        setTimeout(() => setToastMessage(null), 3500);
+      };
+
+      const avgBackground = useMemo(() => {
+        const valid = backgroundReadings.map(Number).filter(n => !isNaN(n) && n >= 0);
+        if (valid.length === 0) return 0.11;
+        return valid.reduce((a, b) => a + b, 0) / valid.length;
+      }, [backgroundReadings]);
+
+      const netDoseRate = useMemo(() => Math.max(0, Number(pointReading) - avgBackground), [pointReading, avgBackground]);
+      const ratioToBackground = useMemo(() => (avgBackground <= 0 ? 0 : Number(pointReading) / avgBackground), [pointReading, avgBackground]);
+      const projectedAnnualDoseMsv = useMemo(() => (netDoseRate * Number(exposureHours)) / 1000, [netDoseRate, exposureHours]);
+
+      const classification = useMemo(() => {
+        if (netDoseRate > 10) {
+          return {
+            level: 'NIVEL DE ACTUACIÓN (> 10 µSv/h netos)',
+            bg: 'bg-red-50 border-red-300 text-red-900',
+            badge: 'bg-red-600 text-white',
+            summary: 'Tasa de dosis neta crítica. Se requieren acciones protectoras y reparadoras inmediatas.',
+            actions: [
+              'Restringir inmediatamente el acceso al área o equipo y colocar señalización reglamentaria de radiación ionizante (trébol radiactivo).',
+              'Notificar al Responsable de Vigilancia Radiológica (RVR) para evaluación dosimétrica detallada y plan de intervención.',
+              'Implementar controles estrictos de tiempo, distancia y blindaje; uso obligatorio de dosimetría personal de lectura directa (EPD).',
+              'Evaluar descontaminación de equipamiento (Cap. 4.1) o remediación/aislamiento del área (Cap. 4.2).'
+            ]
+          };
+        }
+        if (netDoseRate > 2.5) {
+          return {
+            level: 'NIVEL DE INTERVENCIÓN OPERACIONAL (> 2.5 µSv/h netos)',
+            bg: 'bg-amber-50 border-amber-300 text-amber-900',
+            badge: 'bg-amber-500 text-white',
+            summary: 'Supera el umbral operacional. Deben aplicarse medidas protectoras y optimización ALARA.',
+            actions: [
+              'Demarcar y señalizar preventivamente la zona o tramo de tubería con presencia de NORM.',
+              'Limitar el tiempo de permanencia de los trabajadores y aumentar la distancia de seguridad.',
+              'Exigir EPP específico (guantes de nitrilo, protección respiratoria HEPA si hay riesgo de polvo/aerosoles) y dosimetría.',
+              'Programar caracterización radiométrica en laboratorio (espectrometría gamma) para verificar criterios de exención/dispensa (1 Bq/g).'
+            ]
+          };
+        }
+        if (ratioToBackground > 3) {
+          return {
+            level: 'NIVEL DE INVESTIGACIÓN (> 3× Fondo Natural)',
+            bg: 'bg-sky-50 border-sky-300 text-sky-900',
+            badge: 'bg-sky-600 text-white',
+            summary: 'Lectura superior a 3 veces el fondo natural local. Amerita investigación técnica.',
+            actions: [
+              'Reportar la anomalía al Responsable de Vigilancia Radiológica (RVR) para identificar la causa (ej. inicio de incrustaciones o acumulación de lodos).',
+              'Incrementar la frecuencia de monitoreo en este punto de interés.',
+              'Verificar calibración y vigencia del intensímetro utilizado.',
+              'Registrar en el formato de seguimiento (Anexo 2) y evaluar si se proyectan tareas de mantenimiento invasivo.'
+            ]
+          };
+        }
+        return {
+          level: 'CONDICIÓN NORMAL / FONDO NATURAL',
+          bg: 'bg-emerald-50 border-emerald-300 text-emerald-900',
+          badge: 'bg-emerald-600 text-white',
+          summary: 'Valores dentro de la variabilidad natural esperada para el área de operación.',
+          actions: [
+            'Continuar con el programa de vigilancia radiológica rutinario según cronograma establecido.',
+            'Mantener el registro histórico de línea base para trazabilidad ambiental y ocupacional.',
+            'No se requieren restricciones radiológicas adicionales para operación normal.'
+          ]
+        };
+      }, [netDoseRate, ratioToBackground]);
+
+      const selectedNode = useMemo(
+        () => FACILITY_NODES.find(n => n.id === selectedNodeId) || FACILITY_NODES[0],
+        [selectedNodeId]
+      );
+
+      const filteredGlossary = useMemo(() => {
+        const q = glossarySearch.toLowerCase().trim();
+        if (!q) return GLOSSARY_TERMS;
+        return GLOSSARY_TERMS.filter(
+          item => item.term.toLowerCase().includes(q) || item.def.toLowerCase().includes(q)
+        );
+      }, [glossarySearch]);
+
+      const exportToCSV = (filename, headers, rows) => {
+        try {
+          const csvContent =
+            '\uFEFF' +
+            [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))].join('\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.setAttribute('href', url);
+          link.setAttribute('download', filename);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          showToast(`Archivo "${filename}" descargado correctamente.`);
+        } catch (err) {
+          showToast('Error al generar el archivo CSV.');
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          {/* NOTIFICACIÓN FLOTANTE (SIN ALERT) */}
+          {toastMessage && (
+            <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-3 rounded-xl shadow-lg border border-slate-700 flex items-center gap-2">
+              <LucideIcon name="check-circle-2" className="w-4 h-4 text-emerald-400" />
+              <span>{toastMessage}</span>
+            </div>
+          )}
+
+          {/* HEADER INSTITUCIONAL */}
+          <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between py-3.5 gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/15 border border-amber-400/40 rounded-xl text-amber-400">
+                    <LucideIcon name="radio" className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white">
+                        NORM <span className="text-amber-400">Oil & Gas</span> Hub
+                      </h1>
+                      <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                        Estándar Técnico Integral
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Vigilancia y Protección Radiológica en Hidrocarburos • Base MME / OIEA GSR Part 3 / SSG-60 / IOGP 412
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  <button
+                    onClick={() => setGlossaryOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors"
+                  >
+                    <LucideIcon name="book-open" className="w-3.5 h-3.5 text-amber-400" />
+                    Glosario Técnico
+                  </button>
+                </div>
+              </div>
+
+              <nav className="flex overflow-x-auto no-scrollbar gap-1 pt-1 pb-0 border-t border-slate-800/80">
+                {[
+                  { id: 'dashboard', label: '1. Niveles de Referencia', icon: 'calculator' },
+                  { id: 'process', label: '2. Mapa NORM en Procesos', icon: 'layers' },
+                  { id: 'decisions', label: '3. Gestión y Remediación', icon: 'git-branch' },
+                  { id: 'protection', label: '4. Protección y Equipos', icon: 'shield-alert' },
+                  { id: 'records', label: '5. Formatos Digitales', icon: 'file-spreadsheet' }
+                ].map(tab => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex items-center gap-2 px-3.5 py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap border-b-2 transition-all ${
+                        isActive
+                          ? 'border-amber-400 text-amber-400 bg-slate-800/50'
+                          : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+                      }`}
+                    >
+                      <LucideIcon name={tab.icon} className="w-4 h-4" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          </header>
+
+          {/* MAIN CONTENT */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="mb-6 bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <LucideIcon name="info" className="w-5 h-5 text-sky-600 mt-0.5" />
+                <div className="text-xs sm:text-sm text-slate-600">
+                  <span className="font-semibold text-slate-900">Alcance Sectorial Ampliado:</span>{' '}
+                  Herramienta operativa aplicable a exploración y producción convencional, recobro mejorado, yacimientos no convencionales, transporte por ductos, plantas de gas y desmantelamiento, bajo un <strong className="text-slate-800">enfoque graduado</strong> (Res. MME 18 1434 / 18 0005 y OIEA SSG-60).
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 text-[11px] font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+                <span>Exención OIEA:</span>
+                <span className="font-bold text-slate-800">1 Bq/g (U/Th)</span>
+                <span>•</span>
+                <span className="font-bold text-slate-800">10 Bq/g (⁴⁰K)</span>
+              </div>
+            </div>
+
+            {/* MÓDULO 1: DASHBOARD NIVELES DE REFERENCIA */}
+            {activeTab === 'dashboard' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-5">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2.5 py-1 rounded-md">
+                      Capítulo 3 • Vigilancia Radiológica
+                    </span>
+                    <h2 className="text-lg font-bold text-slate-900 mt-2">
+                      Evaluador de Tasa de Dosis y Niveles de Referencia
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Calcula el promedio de fondo natural (mínimo 4 lecturas según Fig. 8) y evalúa la lectura neta en cualquier punto de la instalación.
+                    </p>
+                  </div>
+
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-700">1. Lecturas de Fondo Natural (µSv/h)</label>
+                      <span className="text-xs font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        Promedio: {avgBackground.toFixed(3)} µSv/h
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {backgroundReadings.map((val, idx) => (
+                        <div key={idx}>
+                          <span className="block text-[10px] text-slate-500 mb-1">Lectura {idx + 1}</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={val}
+                            onChange={e => {
+                              const next = [...backgroundReadings];
+                              next[idx] = parseFloat(e.target.value) || 0;
+                              setBackgroundReadings(next);
+                            }}
+                            className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 outline-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      * Tomar en zona libre de equipos, lodos o tuberías almacenadas. Valor típico: 0.05 – 0.20 µSv/h.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
+                        <span>2. Lectura en Punto de Interés (a 30 cm)</span>
+                        <span className="font-mono text-sky-700">{Number(pointReading).toFixed(2)} µSv/h</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="15"
+                        step="0.05"
+                        value={pointReading}
+                        onChange={e => setPointReading(parseFloat(e.target.value))}
+                        className="w-full accent-sky-600 cursor-pointer"
+                      />
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <input
+                          type="number"
+                          step="0.05"
+                          min="0"
+                          value={pointReading}
+                          onChange={e => setPointReading(parseFloat(e.target.value) || 0)}
+                          className="w-28 px-2.5 py-1.5 text-xs font-mono border border-slate-300 rounded-lg"
+                        />
+                        <span className="text-xs text-slate-500">µSv/h (Intensímetro intrínsecamente seguro)</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">Permanencia anual (h/año)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="8760"
+                          value={exposureHours}
+                          onChange={e => setExposureHours(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2.5 py-1.5 text-xs font-mono border border-slate-300 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">²²²Radón en aire (Bq/m³)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={radonLevel}
+                          onChange={e => setRadonLevel(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2.5 py-1.5 text-xs font-mono border border-slate-300 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="lg:col-span-7 space-y-5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+                      <span className="text-[11px] text-slate-500 block">Tasa Dosis Neta</span>
+                      <span className="text-xl font-bold font-mono text-slate-900">
+                        {netDoseRate.toFixed(2)} <span className="text-xs font-normal">µSv/h</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">Lectura − Fondo</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+                      <span className="text-[11px] text-slate-500 block">Relación vs. Fondo</span>
+                      <span className="text-xl font-bold font-mono text-slate-900">{ratioToBackground.toFixed(1)}×</span>
+                      <span className="text-[10px] text-slate-400">Umbral invest.: &gt;3.0×</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+                      <span className="text-[11px] text-slate-500 block">Dosis Efectiva Proy.</span>
+                      <span className={`text-xl font-bold font-mono ${projectedAnnualDoseMsv > 1 ? 'text-amber-600' : 'text-slate-900'}`}>
+                        {projectedAnnualDoseMsv.toFixed(2)} <span className="text-xs font-normal">mSv/a</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">Ref. público/gral: 1 mSv/a</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
+                      <span className="text-[11px] text-slate-500 block">Estado ²²²Radón</span>
+                      <span className={`text-xl font-bold font-mono ${radonLevel > 1000 ? 'text-red-600' : 'text-emerald-700'}`}>
+                        {radonLevel > 1000 ? 'EXCEDE' : 'CUMPLE'}
+                      </span>
+                      <span className="text-[10px] text-slate-400">Límite: 1,000 Bq/m³</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                      <LucideIcon name="activity" className="w-4 h-4 text-sky-600" />
+                      Pirámide de Niveles de Referencia Operativos (Adaptado Fig. 10 MME / OIEA)
+                    </h3>
+                    <div className="flex flex-col items-center space-y-1.5 my-2">
+                      <div className={`w-full sm:w-5/12 py-2.5 px-4 rounded-t-xl text-center border transition-all ${netDoseRate > 10 ? 'bg-red-600 text-white border-red-700 ring-4 ring-red-500/20 scale-[1.02] font-bold' : 'bg-red-50/70 text-red-900 border-red-200 opacity-75'}`}>
+                        <div className="text-xs font-bold">&gt; 10 µSv/h (Neto)</div>
+                        <div className="text-[11px]">Nivel de Actuación</div>
+                      </div>
+                      <div className={`w-full sm:w-7/12 py-2.5 px-4 rounded-lg text-center border transition-all ${netDoseRate > 2.5 && netDoseRate <= 10 ? 'bg-amber-500 text-white border-amber-600 ring-4 ring-amber-500/20 scale-[1.02] font-bold' : 'bg-amber-50/80 text-amber-900 border-amber-200 opacity-80'}`}>
+                        <div className="text-xs font-bold">&gt; 2.5 µSv/h (Neto)</div>
+                        <div className="text-[11px]">Nivel de Intervención Operacional</div>
+                      </div>
+                      <div className={`w-full sm:w-9/12 py-2.5 px-4 rounded-lg text-center border transition-all ${netDoseRate <= 2.5 && ratioToBackground > 3 ? 'bg-sky-600 text-white border-sky-700 ring-4 ring-sky-500/20 scale-[1.02] font-bold' : 'bg-sky-50/80 text-sky-900 border-sky-200 opacity-85'}`}>
+                        <div className="text-xs font-bold">&gt; 3× Fondo Natural ({(avgBackground * 3).toFixed(2)} µSv/h)</div>
+                        <div className="text-[11px]">Nivel de Investigación</div>
+                      </div>
+                      <div className={`w-full sm:w-11/12 py-2.5 px-4 rounded-b-xl text-center border transition-all ${netDoseRate <= 2.5 && ratioToBackground <= 3 ? 'bg-emerald-600 text-white border-emerald-700 ring-4 ring-emerald-500/20 font-bold' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                        <div className="text-xs font-bold">Fondo Natural Base ≈ {avgBackground.toFixed(2)} µSv/h</div>
+                        <div className="text-[11px]">Operación Normal / Sin Intervención</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`p-5 rounded-xl border ${classification.bg} transition-all`}>
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-md ${classification.badge}`}>
+                        {classification.level}
+                      </span>
+                      {radonLevel > 1000 && (
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-red-700 text-white">
+                          ALERTA RADÓN &gt; 1000 Bq/m³
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium mb-3">{classification.summary}</p>
+                    <ul className="space-y-1.5 text-xs">
+                      {classification.actions.map((act, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <LucideIcon name="check-circle-2" className="w-4 h-4 mt-0.5 opacity-80" />
+                          <span>{act}</span>
+                        </li>
+                      ))}
+                      {radonLevel > 1000 && (
+                        <li className="flex items-start gap-2 font-bold text-red-900">
+                          <LucideIcon name="alert-triangle" className="w-4 h-4 mt-0.5" />
+                          <span>
+                            Acción Radón: Implementar extracción/ventilación mecánica inmediata en espacios cerrados y controlar tiempo de permanencia (Res. 18 1434 / OIEA SSG-32).
+                          </span>
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MÓDULO 2: MAPA DE PROCESOS */}
+            {activeTab === 'process' && (
+              <div className="space-y-6">
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2.5 py-1 rounded-md">
+                    Capítulo 1 • Caracterización y Puntos de Acumulación (Cap. 3.3)
+                  </span>
+                  <h2 className="text-lg font-bold text-slate-900 mt-2">
+                    Puntos Críticos de Acumulación NORM en Facilidades de Hidrocarburos
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1 mb-4">
+                    Selecciona una unidad operativa para visualizar los mecanismos físico-químicos de concentración, radionucleidos críticos y protocolos de control.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-2.5 mb-6">
+                    {FACILITY_NODES.map(node => {
+                      const active = node.id === selectedNodeId;
+                      return (
+                        <button
+                          key={node.id}
+                          onClick={() => setSelectedNodeId(node.id)}
+                          className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                            active
+                              ? 'bg-slate-900 text-white border-slate-900 shadow-md'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <LucideIcon name={node.icon} className={`w-5 h-5 ${active ? 'text-amber-400' : 'text-sky-600'}`} />
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${active ? 'bg-slate-800 text-slate-300' : 'bg-white text-slate-500'}`}>
+                              {node.stage.split(' ')[0]}
+                            </span>
+                          </div>
+                          <div className="text-xs font-bold leading-snug">{node.title}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-4 border-b border-slate-200">
+                      <div>
+                        <span className="text-xs font-semibold text-sky-700">{selectedNode.stage}</span>
+                        <h3 className="text-base sm:text-lg font-bold text-slate-900">{selectedNode.title}</h3>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedNode.radionuclides.map(rad => (
+                          <span key={rad} className="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                            {rad}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 text-xs">
+                      <div className="bg-white p-3.5 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-700 block mb-1">Forma Física y Matriz</span>
+                        <p className="text-slate-600 font-medium">{selectedNode.form}</p>
+                        <p className="text-slate-500 mt-1">Matriz: {selectedNode.matrix}</p>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-700 block mb-1">Rango Típico de Actividad (IOGP 412)</span>
+                        <p className="text-amber-800 font-mono font-semibold">{selectedNode.activityRange}</p>
+                        <p className="text-slate-500 mt-1">Vía crítica: {selectedNode.exposurePath}</p>
+                      </div>
+                      <div className="bg-white p-3.5 rounded-lg border border-slate-200 md:col-span-2 lg:col-span-1">
+                        <span className="font-bold text-slate-700 block mb-1">Monitoreo y Controles Operativos</span>
+                        <p className="text-slate-600 mb-1.5"><strong>Medición:</strong> {selectedNode.monitoring}</p>
+                        <p className="text-slate-600"><strong>Control:</strong> {selectedNode.controls}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                  <h3 className="text-base font-bold text-slate-900 mb-1">
+                    Caracterización de Radionucleidos de Origen Natural (Cadenas ²³⁸U, ²³²Th y ⁴⁰K)
+                  </h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Propiedades radiológicas, solubilidad geoquímica y niveles de exención/dispensa según OIEA GSR Part 3 y Tabla 3 del documento MME.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                          <th className="py-2.5 px-3 font-bold">Isótopo</th>
+                          <th className="py-2.5 px-3 font-bold">Cadena / Origen</th>
+                          <th className="py-2.5 px-3 font-bold">Semidesintegración</th>
+                          <th className="py-2.5 px-3 font-bold">Emisión</th>
+                          <th className="py-2.5 px-3 font-bold">Criterio Exención</th>
+                          <th className="py-2.5 px-3 font-bold">Comportamiento en Oil & Gas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {RADIONUCLIDES_DB.map(rad => (
+                          <tr key={rad.symbol} className="hover:bg-slate-50">
+                            <td className="py-2.5 px-3 font-bold text-sky-800 whitespace-nowrap">
+                              {rad.symbol} <span className="font-normal text-slate-500 block">{rad.name}</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">{rad.chain}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-700 whitespace-nowrap">{rad.halfLife}</td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">{rad.decay}</td>
+                            <td className="py-2.5 px-3 font-mono text-emerald-700 whitespace-nowrap">{rad.exemption}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{rad.appearance}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MÓDULO 3: ÁRBOLES DE DECISIÓN */}
+            {activeTab === 'decisions' && (
+              <div className="space-y-6">
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2.5 py-1 rounded-md">
+                        Capítulo 4 • Gestión de Materiales y Residuos NORM (OIEA SSG-60 / TRS 419)
+                      </span>
+                      <h2 className="text-lg font-bold text-slate-900 mt-2">
+                        Asistente Interactivo de Toma de Decisiones Operativas
+                      </h2>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setTreeMode('equipment'); setEquipStep('start'); }}
+                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors ${treeMode === 'equipment' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                      >
+                        Flujo 1: Equipamiento Contaminado
+                      </button>
+                      <button
+                        onClick={() => { setTreeMode('remediation'); setRemStep('start'); }}
+                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors ${treeMode === 'remediation' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                      >
+                        Flujo 2: Remediación de Áreas
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* FLUJO 1: EQUIPAMIENTO CONTAMINADO */}
+                  {treeMode === 'equipment' && (
+                    <div className="py-6 max-w-3xl mx-auto">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-bold uppercase text-slate-500">Protocolo de Descontaminación de Equipos (Fig. 12)</span>
+                        <button onClick={() => setEquipStep('start')} className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline font-medium">
+                          <LucideIcon name="rotate-ccw" className="w-3.5 h-3.5" /> Reiniciar flujo
+                        </button>
+                      </div>
+
+                      {equipStep === 'start' && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center space-y-4">
+                          <LucideIcon name="wrench" className="w-10 h-10 text-sky-600 mx-auto" />
+                          <h3 className="text-base font-bold text-slate-900">Paso 1: Posible contaminación de equipamiento con fuentes naturales</h3>
+                          <p className="text-xs text-slate-600 max-w-lg mx-auto">
+                            Se retira una pieza (tubería, válvula, bomba, separador) de línea de producción o mantenimiento. ¿El equipamiento puede monitorearse radiométricamente en el mismo lugar?
+                          </p>
+                          <div className="flex justify-center gap-3 pt-2">
+                            <button onClick={() => setEquipStep('monitor_onsite')} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg">SÍ, monitorear en sitio</button>
+                            <button onClick={() => setEquipStep('assume_contaminated')} className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg">NO es posible en sitio</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {equipStep === 'assume_contaminated' && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center space-y-4">
+                          <LucideIcon name="alert-triangle" className="w-10 h-10 text-amber-600 mx-auto" />
+                          <h3 className="text-base font-bold text-amber-950">Paso 2A: Asumir preventivamente que el equipamiento está contaminado</h3>
+                          <p className="text-xs text-amber-900 max-w-lg mx-auto">
+                            Colocar tapones herméticos en extremos de tuberías, embalar con polietileno de alta densidad para evitar dispersión y trasladar a zona controlada para monitoreo.
+                          </p>
+                          <button onClick={() => setEquipStep('monitor_onsite')} className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-lg">
+                            Continuar a Monitoreo <LucideIcon name="arrow-right" className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      {equipStep === 'monitor_onsite' && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center space-y-4">
+                          <LucideIcon name="gauge" className="w-10 h-10 text-sky-600 mx-auto" />
+                          <h3 className="text-base font-bold text-slate-900">Paso 2B: Verificación de Tasa de Dosis y Contaminación Superficial</h3>
+                          <p className="text-xs text-slate-600 max-w-lg mx-auto">
+                            ¿Los valores medidos de radiación están por debajo del <strong>Nivel de Actuación (&le; 10 µSv/h netos)</strong> y criterios de dispensa?
+                          </p>
+                          <div className="flex justify-center gap-3 pt-2">
+                            <button onClick={() => setEquipStep('released')} className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-lg">SÍ, bajo el nivel</button>
+                            <button onClick={() => setEquipStep('decontaminate')} className="px-5 py-2.5 bg-red-600 text-white text-xs font-bold rounded-lg">NO, superan el nivel</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {equipStep === 'decontaminate' && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 space-y-4">
+                          <h3 className="text-base font-bold text-slate-900 text-center">Paso 3: Procedimientos de Descontaminación (Fig. 11)</h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div className="bg-white p-3.5 rounded-lg border border-slate-200">
+                              <span className="font-bold text-sky-800 block mb-1">Métodos Abrasivos / Mecánicos</span>
+                              <p className="text-slate-600">Perforación y escariado, aspiración con filtros HEPA, hidrojet a alta presión. Contención estricta de aerosoles y lodos.</p>
+                            </div>
+                            <div className="bg-white p-3.5 rounded-lg border border-slate-200">
+                              <span className="font-bold text-sky-800 block mb-1">Métodos Químicos</span>
+                              <p className="text-slate-600">Limpieza química con ácidos, álcalis o agentes quelantes para geometrías complejas. Genera efluentes líquidos con NORM.</p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-center font-semibold text-slate-700 pt-2">¿La descontaminación fue efectiva?</p>
+                          <div className="flex justify-center gap-3">
+                            <button onClick={() => setEquipStep('released')} className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-lg">SÍ, efectiva</button>
+                            <button onClick={() => setEquipStep('can_remove')} className="px-5 py-2.5 bg-amber-600 text-white text-xs font-bold rounded-lg">NO, persiste contaminación</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {equipStep === 'can_remove' && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center space-y-4">
+                          <h3 className="text-base font-bold text-amber-950">Paso 4: Evaluación de Remoción Adicional</h3>
+                          <p className="text-xs text-amber-900">¿Es viable un segundo ciclo de remoción bajo el principio ALARA?</p>
+                          <div className="flex justify-center gap-3">
+                            <button onClick={() => setEquipStep('decontaminate')} className="px-5 py-2.5 bg-sky-600 text-white text-xs font-bold rounded-lg">SÍ, repetir descontaminación</button>
+                            <button onClick={() => setEquipStep('waste_management')} className="px-5 py-2.5 bg-red-700 text-white text-xs font-bold rounded-lg">NO → Gestión como Residuo NORM</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {equipStep === 'released' && (
+                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-6 text-center space-y-3">
+                          <LucideIcon name="check-circle-2" className="w-12 h-12 text-emerald-600 mx-auto" />
+                          <h3 className="text-base font-bold text-emerald-950">Equipamiento Liberado para Uso o Disposición Convencional</h3>
+                          <p className="text-xs text-emerald-900 max-w-lg mx-auto">
+                            Emitir certificado de liberación radiológica firmado por el Responsable de Vigilancia Radiológica (RVR).
+                          </p>
+                        </div>
+                      )}
+
+                      {equipStep === 'waste_management' && (
+                        <div className="bg-red-50 border border-red-300 rounded-xl p-6 text-center space-y-3">
+                          <LucideIcon name="shield-alert" className="w-12 h-12 text-red-600 mx-auto" />
+                          <h3 className="text-base font-bold text-red-950">Gestión como Residuo Radiactivo NORM (Res. 18 0005 / OIEA SSG-60)</h3>
+                          <p className="text-xs text-red-900 max-w-lg mx-auto">
+                            Aislar, etiquetar, inventariar actividad específica (Bq/g) y gestionar mediante gestor autorizado o alternativas avaladas por el regulador.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* FLUJO 2: REMEDIACIÓN DE ÁREAS */}
+                  {treeMode === 'remediation' && (
+                    <div className="py-6 max-w-3xl mx-auto">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-bold uppercase text-slate-500">Protocolo de Remediación de Áreas en Clausura (Fig. 12)</span>
+                        <button onClick={() => setRemStep('start')} className="inline-flex items-center gap-1 text-xs text-sky-700 hover:underline font-medium">
+                          <LucideIcon name="rotate-ccw" className="w-3.5 h-3.5" /> Reiniciar flujo
+                        </button>
+                      </div>
+
+                      {remStep === 'start' && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center space-y-4">
+                          <LucideIcon name="layers" className="w-10 h-10 text-sky-600 mx-auto" />
+                          <h3 className="text-base font-bold text-slate-900">Paso 1: Monitoreo Radiológico en Puntos de Interés</h3>
+                          <p className="text-xs text-slate-600 max-w-lg mx-auto">
+                            ¿Los valores medidos superan el <strong>Nivel de Intervención Operacional (&gt; 2.5 µSv/h netos)</strong>?
+                          </p>
+                          <div className="flex justify-center gap-3">
+                            <button onClick={() => setRemStep('lab_check')} className="px-5 py-2.5 bg-amber-600 text-white text-xs font-bold rounded-lg">SÍ, superan 2.5 µSv/h</button>
+                            <button onClick={() => setRemStep('no_action')} className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-lg">NO, bajo el nivel</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {remStep === 'no_action' && (
+                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-6 text-center space-y-3">
+                          <LucideIcon name="check-circle-2" className="w-10 h-10 text-emerald-600 mx-auto" />
+                          <h3 className="text-base font-bold text-emerald-950">No se Requiere Acción de Remediación Radiológica</h3>
+                          <p className="text-xs text-emerald-900">
+                            Verificar las <strong>consideraciones no radiológicas (Cap. 4.3)</strong>: hidrocarburos totales, metales pesados, salinidad y estabilidad geotécnica antes de la liberación ambiental definitiva.
+                          </p>
+                        </div>
+                      )}
+
+                      {remStep === 'lab_check' && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-center space-y-4">
+                          <h3 className="text-base font-bold text-slate-900">Paso 2: Caracterización de Matrices Ambientales y Riesgos Fisicoquímicos</h3>
+                          <p className="text-xs text-slate-600 max-w-lg mx-auto">
+                            Verificar resultados de espectrometría en laboratorio (SGC) y evaluar simultáneamente riesgos no radiológicos (acidez, metales pesados). ¿Se confirma necesidad de remediación?
+                          </p>
+                          <div className="flex justify-center gap-3">
+                            <button onClick={() => setRemStep('execute_remediation')} className="px-5 py-2.5 bg-red-600 text-white text-xs font-bold rounded-lg">SÍ, ejecutar remediación</button>
+                            <button onClick={() => setRemStep('no_action')} className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-lg">NO, bajo nivel de exención (1 Bq/g)</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {remStep === 'execute_remediation' && (
+                        <div className="bg-amber-50 border border-amber-300 rounded-xl p-6 space-y-4">
+                          <h3 className="text-base font-bold text-amber-950 text-center">Paso 3: Controles de Exposición, Remediación y Mapeo de Verificación</h3>
+                          <ul className="text-xs text-amber-950 space-y-2 max-w-xl mx-auto">
+                            <li>• <strong>1. Controles previos:</strong> Demarcar perímetro, humectación para evitar resuspensión de polvo, dosimetría y EPP para operadores.</li>
+                            <li>• <strong>2. Remediación (OIEA TRS 419):</strong> Remoción selectiva de suelos/sedimentos contaminados, estabilización o aislamiento según caracterización.</li>
+                            <li>• <strong>3. Monitoreo de verificación:</strong> Mapeo radiométrico final para comprobar retorno a valores de línea base (fondo natural).</li>
+                          </ul>
+                          <div className="text-center pt-2">
+                            <button onClick={() => setRemStep('area_released')} className="px-5 py-2.5 bg-emerald-600 text-white text-xs font-bold rounded-lg">
+                              Verificación Exitosa → Liberar Área
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {remStep === 'area_released' && (
+                        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-6 text-center space-y-3">
+                          <LucideIcon name="check-circle-2" className="w-12 h-12 text-emerald-600 mx-auto" />
+                          <h3 className="text-base font-bold text-emerald-950">Área Liberada para Uso Sin Restricciones</h3>
+                          <p className="text-xs text-emerald-900">
+                            Consolidar informe técnico de clausura con mapeo radiométrico post-remediación y cadena de custodia de los residuos NORM retirados.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Consideraciones No Radiológicas */}
+                <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm">
+                  <h3 className="text-sm font-bold text-amber-400 mb-1.5">
+                    Capítulo 4.3 • Evaluación Integral: Consideraciones No Radiológicas
+                  </h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    En grandes volúmenes de lodos, cortes y aguas de producción, el riesgo dominante suele ser <strong>fisicoquímico y ambiental</strong> (metales pesados como bario, plomo, mercurio; hidrocarburos; cloruros; acidez y erosión/sedimentación) más que el radiológico. Todo plan de gestión NORM debe articularse con el Plan de Manejo Ambiental (PMA) y las autorizaciones ambientales vigentes.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* MÓDULO 4: PROTECCIÓN RADIOLÓGICA Y EQUIPOS */}
+            {activeTab === 'protection' && (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2.5 py-1 rounded-md">
+                      Capítulo 2 • Marco ICRP / Res. 18 1434
+                    </span>
+                    <h2 className="text-base font-bold text-slate-900 mt-2 mb-3">
+                      Los 3 Pilares de la Protección Radiológica
+                    </h2>
+                    <div className="space-y-3 text-xs">
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-900 block">1. Justificación</span>
+                        <p className="text-slate-600 mt-0.5">Toda decisión que altere una situación de exposición debe producir un beneficio neto positivo superior al detrimento radiológico.</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-900 block">2. Optimización (Criterio ALARA)</span>
+                        <p className="text-slate-600 mt-0.5">Mantener las dosis tan bajas como sea razonablemente alcanzable, considerando factores económicos y sociales.</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-900 block">3. Limitación y Niveles de Referencia</span>
+                        <p className="text-slate-600 mt-0.5">Límite ocupacional: <strong>20 mSv/año</strong> (promedio 5 años). Nivel de referencia general/público: <strong>1 mSv/año</strong> efectivo.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md">
+                      Capítulo 2.2 • Control en Campo
+                    </span>
+                    <h2 className="text-base font-bold text-slate-900 mt-2 mb-3">
+                      Principios Operativos contra Irradiación Externa
+                    </h2>
+                    <div className="space-y-3 text-xs">
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-900 block">⏱️ Tiempo (Menor permanencia = Menor dosis)</span>
+                        <p className="text-slate-600 mt-0.5">Dosis = Tasa de dosis × Tiempo. Planificar maniobras previamente para reducir al mínimo la estancia junto a equipos con incrustaciones.</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-900 block">📏 Distancia (Ley del Inverso del Cuadrado)</span>
+                        <p className="text-slate-600 mt-0.5">Al duplicar la distancia respecto a una fuente puntual, la tasa de dosis se reduce a la cuarta parte (1/d²). Demarcar perímetros de seguridad.</p>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <span className="font-bold text-slate-900 block">🧱 Blindaje (Atenuación física)</span>
+                        <p className="text-slate-600 mt-0.5">Interponer espesores adecuados según el tipo de emisión (acero/concreto/plomo para gamma; acrílico/plástico para beta).</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selector Inteligente de Instrumentación y EPP */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                  <h3 className="text-base font-bold text-slate-900 mb-1 flex items-center gap-2">
+                    <LucideIcon name="hard-hat" className="w-5 h-5 text-amber-600" />
+                    Selector de Instrumentación Radiológica y EPP por Escenario Operativo
+                  </h3>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Selecciona la tarea a ejecutar en campo para verificar el detector calibrado requerido y las barreras contra exposición interna/externa.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 mb-5">
+                    {[
+                      { id: 'routine_gamma', label: 'Inspección Rutinaria y Fondo Natural' },
+                      { id: 'maintenance_open', label: 'Apertura de Equipos / Desincrustación' },
+                      { id: 'gas_films', label: 'Mantenimiento Líneas de Gas (²¹⁰Pb/²¹⁰Po)' },
+                      { id: 'confined_radon', label: 'Tanques Cerrados y Espacios Confinados' }
+                    ].map(sc => (
+                      <button
+                        key={sc.id}
+                        onClick={() => setSelectedScenario(sc.id)}
+                        className={`p-3 rounded-xl border text-xs font-bold text-left transition-all ${
+                          selectedScenario === sc.id
+                            ? 'bg-sky-700 text-white border-sky-800 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {sc.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedScenario === 'routine_gamma' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Instrumento Principal</span>
+                        <p className="text-slate-700"><strong>Intensímetro (Geiger-Müller o Cámara de Ionización)</strong> en unidades µSv/h. Debe ser <strong>intrínsecamente seguro (ATEX/IECEx)</strong> para atmósferas explosivas en Oil & Gas.</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Dosimetría Personal</span>
+                        <p className="text-slate-700">Dosímetro pasivo de lectura diferida (TLD/OSL) mensual si se opera en zonas supervisadas, provisto por empresa autorizada (Res. 40377 / 18 1289).</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">EPP y Reglas Básicas</span>
+                        <p className="text-slate-700">EPP estándar de campo petrolero (casco, gafas, ropa ignífuga, botas). Medir a 30 cm de superficie y 1 m del suelo.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedScenario === 'maintenance_open' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Instrumento Principal</span>
+                        <p className="text-slate-700"><strong>Intensímetro (µSv/h)</strong> + <strong>Monitor de Contaminación Superficial (Bq/cm² / CPS)</strong> con sonda Beta-Gamma para validar limpieza de piezas y personal al salir.</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Dosimetría Personal</span>
+                        <p className="text-slate-700"><strong>Dosímetro Electrónico de Lectura Directa (EPD)</strong> con alarma sonora/vibración programada, complementado con dosímetro pasivo oficial.</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">EPP y Reglas Básicas</span>
+                        <p className="text-slate-700">Overol desechable <strong>Tyvek</strong>, doble guante de nitrilo, respirador con <strong>filtros HEPA (P100)</strong>. Prohibido comer, beber o fumar. Ducha de descontaminación al cierre.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedScenario === 'gas_films' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Instrumento Principal</span>
+                        <p className="text-slate-700"><strong>Monitor de Contaminación Alfa/Beta</strong> (sonda de centelleo ZnS(Ag) o detector proporcional de ventana fina) + frotis superficiales (smear test) para ²¹⁰Pb/²¹⁰Po.</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Dosimetría Personal</span>
+                        <p className="text-slate-700">Evaluación de riesgo de incorporación interna (bioensayos o monitoreo de aire personal si hay corte/abrasión mecánica).</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">EPP y Reglas Básicas</span>
+                        <p className="text-slate-700">Respirador cara completa con filtro P100/HEPA, guantes impermeables sellados. Evitar pulido en seco que genere aerosoles de ²¹⁰Po.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedScenario === 'confined_radon' && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Instrumento Principal</span>
+                        <p className="text-slate-700"><strong>Monitor Continuo de Radón (²²²Rn)</strong> o detectores pasivos (carbón activado / trazas nucleares) + monitor multigás (LEL, O₂, H₂S).</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">Umbral de Control</span>
+                        <p className="text-slate-700">Mantener concentración media anual por debajo de <strong>1,000 Bq/m³</strong> (Res. 18 1434) y ventilar antes de cualquier ingreso.</p>
+                      </div>
+                      <div>
+                        <span className="font-bold text-sky-800 block mb-1">EPP y Reglas Básicas</span>
+                        <p className="text-slate-700">Ventilación forzada continua, línea de aire o equipo de respiración autocontenido (SCBA) si se superan niveles de intervención.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tabla de Tipos de Radiación y Blindaje */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                  <h3 className="text-base font-bold text-slate-900 mb-3">
+                    Características de Decaimiento y Blindajes Recomendados (Tabla 2 MME)
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                    {RADIATION_SHIELDING.map(item => (
+                      <div key={item.symbol} className="border border-slate-200 rounded-xl p-4 bg-slate-50 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-sm text-slate-900">Radiación {item.type}</span>
+                            <span className="w-7 h-7 rounded-full bg-slate-900 text-amber-400 font-bold flex items-center justify-center">
+                              {item.symbol}
+                            </span>
+                          </div>
+                          <p className="text-slate-600 mb-2">{item.nature}</p>
+                          <p className="text-slate-600 mb-2"><strong>Alcance:</strong> {item.range}</p>
+                          <p className="text-slate-600 mb-2"><strong>Riesgo principal:</strong> {item.hazard}</p>
+                        </div>
+                        <div className="pt-2.5 mt-2 border-t border-slate-200 text-sky-900 font-medium">
+                          <strong>Blindaje / Control:</strong> {item.shielding}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MÓDULO 5: FORMATOS DIGITALES EXPORTABLES */}
+            {activeTab === 'records' && (
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2.5 py-1 rounded-md">
+                      Capítulo 5 y Anexos 1, 2 y 3 • Trazabilidad y Auditoría
+                    </span>
+                    <h2 className="text-lg font-bold text-slate-900 mt-2">
+                      Registros Digitales de Vigilancia Radiológica en Campo
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Diligencia las mediciones en tiempo real con cálculo automático de promedios, tasas netas y alertas, y exporta a CSV para informes regulatorios.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'anexo1', label: 'Anexo 1: Fondo Natural' },
+                      { id: 'anexo2', label: 'Anexo 2: Puntos de Interés' },
+                      { id: 'anexo3', label: 'Anexo 3: Dosimetría Personal' }
+                    ].map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => setActiveForm(f.id)}
+                        className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                          activeForm === f.id
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ANEXO 1 */}
+                {activeForm === 'anexo1' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Anexo 1 — Registro de Monitoreo de Radiación de Fondo Natural (Natural Background)
+                      </h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() =>
+                            setAnexo1Rows([
+                              ...anexo1Rows,
+                              { id: Date.now(), point: 'Nuevo Punto Control', m1: 0.11, m2: 0.11, m3: 0.12, m4: 0.11, obs: '' }
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          <LucideIcon name="plus" className="w-3.5 h-3.5" /> Agregar Punto
+                        </button>
+                        <button
+                          onClick={() =>
+                            exportToCSV(
+                              'Anexo1_Fondo_Natural_NORM.csv',
+                              ['Punto Seleccionado', 'M1 (µSv/h)', 'M2 (µSv/h)', 'M3 (µSv/h)', 'M4 (µSv/h)', 'Promedio (µSv/h)', 'Observaciones'],
+                              anexo1Rows.map(r => [
+                                r.point,
+                                r.m1,
+                                r.m2,
+                                r.m3,
+                                r.m4,
+                                ((Number(r.m1) + Number(r.m2) + Number(r.m3) + Number(r.m4)) / 4).toFixed(3),
+                                r.obs
+                              ])
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          <LucideIcon name="download" className="w-3.5 h-3.5" /> Exportar CSV
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                            <th className="p-2.5 font-bold">Punto Seleccionado</th>
+                            <th className="p-2.5 font-bold w-24">Med. 1</th>
+                            <th className="p-2.5 font-bold w-24">Med. 2</th>
+                            <th className="p-2.5 font-bold w-24">Med. 3</th>
+                            <th className="p-2.5 font-bold w-24">Med. 4</th>
+                            <th className="p-2.5 font-bold">Promedio (µSv/h)</th>
+                            <th className="p-2.5 font-bold">Observaciones</th>
+                            <th className="p-2.5 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {anexo1Rows.map((row, idx) => {
+                            const avg = (Number(row.m1) + Number(row.m2) + Number(row.m3) + Number(row.m4)) / 4;
+                            return (
+                              <tr key={row.id}>
+                                <td className="p-2">
+                                  <input
+                                    type="text"
+                                    value={row.point}
+                                    onChange={e => {
+                                      const copy = [...anexo1Rows];
+                                      copy[idx].point = e.target.value;
+                                      setAnexo1Rows(copy);
+                                    }}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded"
+                                  />
+                                </td>
+                                {['m1', 'm2', 'm3', 'm4'].map(field => (
+                                  <td key={field} className="p-2">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      value={row[field]}
+                                      onChange={e => {
+                                        const copy = [...anexo1Rows];
+                                        copy[idx][field] = parseFloat(e.target.value) || 0;
+                                        setAnexo1Rows(copy);
+                                      }}
+                                      className="w-full px-2 py-1 font-mono border border-slate-300 rounded"
+                                    />
+                                  </td>
+                                ))}
+                                <td className="p-2 font-mono font-bold text-sky-800">{avg.toFixed(3)} µSv/h</td>
+                                <td className="p-2">
+                                  <input
+                                    type="text"
+                                    value={row.obs}
+                                    onChange={e => {
+                                      const copy = [...anexo1Rows];
+                                      copy[idx].obs = e.target.value;
+                                      setAnexo1Rows(copy);
+                                    }}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded"
+                                  />
+                                </td>
+                                <td className="p-2 text-center">
+                                  <button
+                                    onClick={() => setAnexo1Rows(anexo1Rows.filter(r => r.id !== row.id))}
+                                    className="text-slate-400 hover:text-red-600"
+                                    title="Eliminar fila"
+                                  >
+                                    <LucideIcon name="trash-2" className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* ANEXO 2 */}
+                {activeForm === 'anexo2' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Anexo 2 — Monitoreo Radiológico en Puntos de Interés (Fondo Aplicado: {avgBackground.toFixed(3)} µSv/h)
+                      </h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() =>
+                            setAnexo2Rows([
+                              ...anexo2Rows,
+                              { id: Date.now(), code: `PI-0${anexo2Rows.length + 1}`, desc: 'Nuevo equipo o tramo', measured: 0.15, obs: '' }
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          <LucideIcon name="plus" className="w-3.5 h-3.5" /> Agregar Punto
+                        </button>
+                        <button
+                          onClick={() =>
+                            exportToCSV(
+                              'Anexo2_Puntos_Interes_NORM.csv',
+                              ['Punto', 'Descripción', 'Tasa Medida (µSv/h)', 'Tasa Neta (µSv/h)', 'Estado Nivel Referencia', 'Observaciones'],
+                              anexo2Rows.map(r => {
+                                const net = Math.max(0, Number(r.measured) - avgBackground);
+                                const status =
+                                  net > 10 ? 'ACTUACION' : net > 2.5 ? 'INTERVENCION' : Number(r.measured) > avgBackground * 3 ? 'INVESTIGACION' : 'NORMAL';
+                                return [r.code, r.desc, r.measured, net.toFixed(3), status, r.obs];
+                              })
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          <LucideIcon name="download" className="w-3.5 h-3.5" /> Exportar CSV
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                            <th className="p-2.5 font-bold w-24">Punto</th>
+                            <th className="p-2.5 font-bold">Descripción del Equipo / Área</th>
+                            <th className="p-2.5 font-bold w-32">Tasa Medida (µSv/h)</th>
+                            <th className="p-2.5 font-bold w-32">Tasa Neta (µSv/h)</th>
+                            <th className="p-2.5 font-bold">Clasificación</th>
+                            <th className="p-2.5 font-bold">Observaciones</th>
+                            <th className="p-2.5 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {anexo2Rows.map((row, idx) => {
+                            const net = Math.max(0, Number(row.measured) - avgBackground);
+                            let badge = <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">Normal</span>;
+                            if (net > 10) badge = <span className="px-2 py-0.5 rounded bg-red-600 text-white font-bold">Actuación (&gt;10)</span>;
+                            else if (net > 2.5) badge = <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-bold">Intervención (&gt;2.5)</span>;
+                            else if (Number(row.measured) > avgBackground * 3) badge = <span className="px-2 py-0.5 rounded bg-sky-600 text-white font-bold">Investigación (&gt;3×)</span>;
+
+                            return (
+                              <tr key={row.id}>
+                                <td className="p-2">
+                                  <input
+                                    type="text"
+                                    value={row.code}
+                                    onChange={e => {
+                                      const copy = [...anexo2Rows];
+                                      copy[idx].code = e.target.value;
+                                      setAnexo2Rows(copy);
+                                    }}
+                                    className="w-full px-2 py-1 font-mono border border-slate-300 rounded"
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <input
+                                    type="text"
+                                    value={row.desc}
+                                    onChange={e => {
+                                      const copy = [...anexo2Rows];
+                                      copy[idx].desc = e.target.value;
+                                      setAnexo2Rows(copy);
+                                    }}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded"
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={row.measured}
+                                    onChange={e => {
+                                      const copy = [...anexo2Rows];
+                                      copy[idx].measured = parseFloat(e.target.value) || 0;
+                                      setAnexo2Rows(copy);
+                                    }}
+                                    className="w-full px-2 py-1 font-mono border border-slate-300 rounded"
+                                  />
+                                </td>
+                                <td className="p-2 font-mono font-bold text-slate-900">{net.toFixed(3)} µSv/h</td>
+                                <td className="p-2">{badge}</td>
+                                <td className="p-2">
+                                  <input
+                                    type="text"
+                                    value={row.obs}
+                                    onChange={e => {
+                                      const copy = [...anexo2Rows];
+                                      copy[idx].obs = e.target.value;
+                                      setAnexo2Rows(copy);
+                                    }}
+                                    className="w-full px-2 py-1 border border-slate-300 rounded"
+                                  />
+                                </td>
+                                <td className="p-2 text-center">
+                                  <button
+                                    onClick={() => setAnexo2Rows(anexo2Rows.filter(r => r.id !== row.id))}
+                                    className="text-slate-400 hover:text-red-600"
+                                    title="Eliminar fila"
+                                  >
+                                    <LucideIcon name="trash-2" className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* ANEXO 3 */}
+                {activeForm === 'anexo3' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Anexo 3 — Control Dosimétrico Operacional por Actividad
+                      </h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() =>
+                            setAnexo3Rows([
+                              ...anexo3Rows,
+                              { id: Date.now(), worker: 'Operador / Técnico', activity: 'Actividad en zona supervisada', hours: 2.0, dose: 1.5 }
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          <LucideIcon name="plus" className="w-3.5 h-3.5" /> Agregar Registro
+                        </button>
+                        <button
+                          onClick={() =>
+                            exportToCSV(
+                              'Anexo3_Dosimetria_Personal_NORM.csv',
+                              ['Trabajador', 'Actividad Desarrollada', 'Tiempo (h)', 'Lectura Dosímetro (µSv)'],
+                              anexo3Rows.map(r => [r.worker, r.activity, r.hours, r.dose])
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg"
+                        >
+                          <LucideIcon name="download" className="w-3.5 h-3.5" /> Exportar CSV
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                            <th className="p-2.5 font-bold">Nombre Trabajador / Rol</th>
+                            <th className="p-2.5 font-bold">Actividad Desarrollada</th>
+                            <th className="p-2.5 font-bold w-28">Tiempo (h)</th>
+                            <th className="p-2.5 font-bold w-36">Lectura Dosímetro (µSv)</th>
+                            <th className="p-2.5 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {anexo3Rows.map((row, idx) => (
+                            <tr key={row.id}>
+                              <td className="p-2">
+                                <input
+                                  type="text"
+                                  value={row.worker}
+                                  onChange={e => {
+                                    const copy = [...anexo3Rows];
+                                    copy[idx].worker = e.target.value;
+                                    setAnexo3Rows(copy);
+                                  }}
+                                  className="w-full px-2 py-1 border border-slate-300 rounded"
+                                />
+                              </td>
+                              <td className="p-2">
+                                <input
+                                  type="text"
+                                  value={row.activity}
+                                  onChange={e => {
+                                    const copy = [...anexo3Rows];
+                                    copy[idx].activity = e.target.value;
+                                    setAnexo3Rows(copy);
+                                  }}
+                                  className="w-full px-2 py-1 border border-slate-300 rounded"
+                                />
+                              </td>
+                              <td className="p-2">
+                                <input
+                                  type="number"
+                                  step="0.5"
+                                  value={row.hours}
+                                  onChange={e => {
+                                    const copy = [...anexo3Rows];
+                                    copy[idx].hours = parseFloat(e.target.value) || 0;
+                                    setAnexo3Rows(copy);
+                                  }}
+                                  className="w-full px-2 py-1 font-mono border border-slate-300 rounded"
+                                />
+                              </td>
+                              <td className="p-2">
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={row.dose}
+                                  onChange={e => {
+                                    const copy = [...anexo3Rows];
+                                    copy[idx].dose = parseFloat(e.target.value) || 0;
+                                    setAnexo3Rows(copy);
+                                  }}
+                                  className="w-full px-2 py-1 font-mono font-bold text-sky-800 border border-slate-300 rounded"
+                                />
+                              </td>
+                              <td className="p-2 text-center">
+                                <button
+                                  onClick={() => setAnexo3Rows(anexo3Rows.filter(r => r.id !== row.id))}
+                                  className="text-slate-400 hover:text-red-600"
+                                  title="Eliminar fila"
+                                >
+                                  <LucideIcon name="trash-2" className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </main>
+
+          {/* MODAL DESLIZANTE: GLOSARIO TÉCNICO REGULATORIO */}
+          {glossaryOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex justify-end">
+              <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
+                <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <LucideIcon name="book-open" className="w-5 h-5 text-amber-400" />
+                    <h2 className="text-sm font-bold">Glosario Técnico NORM & Radioprotección</h2>
+                  </div>
+                  <button
+                    onClick={() => setGlossaryOpen(false)}
+                    className="text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <div className="p-3 border-b border-slate-200 bg-slate-50">
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-slate-400">
+                      <LucideIcon name="search" className="w-4 h-4" />
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Buscar término (ej. Radiobarita, ALARA, Dispensa)..."
+                      value={glossarySearch}
+                      onChange={e => setGlossarySearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {filteredGlossary.map((item, idx) => (
+                    <div key={idx} className="p-3 rounded-xl border border-slate-200 bg-slate-50/70">
+                      <div className="text-xs font-bold text-sky-900 mb-1">{item.term}</div>
+                      <p className="text-xs text-slate-600 leading-relaxed">{item.def}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* FOOTER REGULATORIO */}
+          <footer className="bg-white border-t border-slate-200 py-4 mt-8">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500">
+              <div>
+                Basado en Criterios de Vigilancia Radiológica (MME), Res. 18 1434 / 18 0005, OIEA GSR Part 3, SSG-60, Safety Report No. 34 e IOGP Report 412.
+              </div>
+              <div className="font-medium text-slate-700">
+                Sector Hidrocarburos • Enfoque Graduado ALARA
+              </div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
